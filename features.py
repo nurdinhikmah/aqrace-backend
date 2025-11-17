@@ -2,9 +2,11 @@ from urllib.parse import urlparse, unquote
 import pandas as pd
 import math
 import joblib
+import os
 
-# Load precomputed domain frequency cache
-domain_freq = joblib.load("/Users/imma/Desktop/Backend/domain_freq.pkl")
+BASE_DIR = os.path.dirname(__file__)
+domain_freq_path = os.path.join(BASE_DIR, "domain_freq.pkl")
+domain_freq = joblib.load(domain_freq_path)
 
 # Helper: check if hostname is IPv4
 def is_ipv4_host(hostname):
