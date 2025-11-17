@@ -1,0 +1,9 @@
+flask
+flask_cors
+joblib
+pandas
+requests
+pyzbar
+pillow
+xgboost
+gunicorn
