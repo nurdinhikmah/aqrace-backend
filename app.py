@@ -9,6 +9,7 @@ from pyzbar.pyzbar import decode
 from PIL import Image
 import io
 import os
+import re  # Import baru untuk regex
 
 app = Flask(__name__)
 CORS(app)
@@ -79,16 +80,73 @@ def url_contains_redirect(url):
     return False
 
 # ------------------------
-# MAIN CLASSIFIER LOGIC
+# NEW: CHECK IF CONTENT IS NOT A URL
+# ------------------------
+def is_not_url_content(text):
+    """
+    Check if the text is clearly NOT a web URL.
+    Returns True if NOT a URL, False if might be a URL.
+    """
+    if not text or not isinstance(text, str):
+        return True
+    
+    text = text.strip()
+    
+    # 1. If too short without a dot
+    if len(text) < 5 and '.' not in text:
+        return True
+    
+    # 2. If only numbers (8-20 digits) - phone or bank account
+    if re.fullmatch(r'\d{8,20}$', text):
+        return True
+    
+    # 3. Bank QR formats (Malaysia)
+    if text.upper().startswith(('MPQR', 'DN', 'PN', 'DUITNOW')):
+        return True
+    
+    # 4. Contact card formats
+    if text.upper().startswith(('BEGIN:VCARD', 'MECARD:', 'MATMSG:')):
+        return True
+    
+    # 5. WiFi format
+    if text.upper().startswith('WIFI:'):
+        return True
+    
+    # 6. Plain text with spaces and no URL indicators
+    if ' ' in text and not ('.' in text or '://' in text or '/' in text):
+        return True
+    
+    # If none of the above, it might be a URL
+    return False
+
+# ------------------------
+# UPDATED MAIN CLASSIFIER LOGIC
 # ------------------------
 def classify_url(url):
+    """
+    Main function to classify URL or detect non-URL content
+    """
+    original_url = url
+    
+    # FIRST: Check if content is clearly not a URL
+    if is_not_url_content(original_url):
+        return {
+            "url": original_url,
+            "label": "Unknown",
+            "probability": 0.0,
+            "confidence": "HIGH",
+            "classification_source": "NON-URL DETECTION",
+            "note": "QR code does not contain a web URL"
+        }
+    
+    # If might be a URL, normalize and continue
     url = normalise_input(url)
 
     # Step 1: Expand shorteners
     if is_shortener_domain(url):
         url = expand_url(url)
 
-    # Step 2: TRSUTED DOMAIN CHECK
+    # Step 2: TRUSTED DOMAIN CHECK
     if domain_is_trusted(url) and not url_contains_redirect(url):
         return {
             "url": url,
@@ -99,23 +157,34 @@ def classify_url(url):
         }
 
     # Step 3: AI MODEL CLASSIFICATION
-    X = extract_url_features([url]).reindex(columns=feature_cols, fill_value=0)
-    prob = float(model.predict_proba(X)[0, 1])
-    label = "Malicious" if prob > THRESHOLD else "Safe"
+    try:
+        X = extract_url_features([url]).reindex(columns=feature_cols, fill_value=0)
+        prob = float(model.predict_proba(X)[0, 1])
+        label = "Malicious" if prob > THRESHOLD else "Safe"
 
-    confidence = (
-        "HIGH" if prob >= 0.85 or prob <= 0.15 else
-        "MEDIUM" if 0.6 <= prob < 0.85 or 0.15 < prob <= 0.4 else
-        "LOW"
-    )
+        confidence = (
+            "HIGH" if prob >= 0.85 or prob <= 0.15 else
+            "MEDIUM" if 0.6 <= prob < 0.85 or 0.15 < prob <= 0.4 else
+            "LOW"
+        )
 
-    return {
-        "url": url,
-        "label": label,
-        "probability": round(prob, 3),
-        "confidence": confidence,
-        "classification_source": "AI MODEL"
-    }
+        return {
+            "url": url,
+            "label": label,
+            "probability": round(prob, 3),
+            "confidence": confidence,
+            "classification_source": "AI MODEL"
+        }
+    except Exception as e:
+        # If model fails, return Unknown
+        return {
+            "url": url,
+            "label": "Unknown",
+            "probability": 0.0,
+            "confidence": "LOW",
+            "classification_source": "MODEL ERROR",
+            "error": str(e)
+        }
 
 # ------------------------
 # ROUTES
