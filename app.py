@@ -14,7 +14,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Load Model
-model_data = joblib.load('/Users/imma/Desktop/Backend/best_model_XGBoost.pkl')
+model_data = joblib.load('best_model_XGBoost.pkl')
 model = model_data["model"]
 feature_cols = model_data["features"]
 
